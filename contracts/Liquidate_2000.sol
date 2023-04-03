@@ -38,7 +38,9 @@ interface ILendingPool {
      * @return ltv the loan to value of the user
      * @return healthFactor the current health factor of the user
      **/
-    function getUserAccountData(address user)
+    function getUserAccountData(
+        address user
+    )
         external
         view
         returns (
@@ -95,10 +97,10 @@ interface IUniswapV2Callee {
 // https://docs.uniswap.org/protocol/V2/reference/smart-contracts/factory
 interface IUniswapV2Factory {
     // Returns the address of the pair for tokenA and tokenB, if it has been created, else address(0).
-    function getPair(address tokenA, address tokenB)
-        external
-        view
-        returns (address pair);
+    function getPair(
+        address tokenA,
+        address tokenB
+    ) external view returns (address pair);
 }
 
 // https://github.com/Uniswap/v2-core/blob/master/contracts/interfaces/IUniswapV2Pair.sol
@@ -123,11 +125,7 @@ interface IUniswapV2Pair {
     function getReserves()
         external
         view
-        returns (
-            uint112 reserve0,
-            uint112 reserve1,
-            uint32 blockTimestampLast
-        );
+        returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast);
 }
 
 // ----------------------IMPLEMENTATION------------------------------
@@ -136,19 +134,22 @@ contract Liquidate_2000 is IUniswapV2Callee {
     uint8 public constant health_factor_decimals = 18;
 
     // TODO: define constants used in the contract including ERC-20 tokens, Uniswap Pairs, Aave lending pools, etc. */
-    
+
     IERC20 constant WBTC = IERC20(0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599);
     IWETH constant WETH = IWETH(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
     IERC20 constant USDT = IERC20(0xdAC17F958D2ee523a2206206994597C13D831ec7);
 
-    IUniswapV2Factory constant uniswapV2Factory = IUniswapV2Factory(0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f);
+    IUniswapV2Factory constant uniswapV2Factory =
+        IUniswapV2Factory(0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f);
     IUniswapV2Pair immutable uniswapV2Pair_WETH_USDT; // Pool1
     IUniswapV2Pair immutable uniswapV2Pair_WBTC_WETH; // Pool2
     IUniswapV2Pair immutable uniswapV2Pair_WBTC_USDT; // Pool2
 
-    ILendingPool constant lendingPool = ILendingPool(0x7d2768dE32b0b80b7a3454c06BdAc94A69DDc7A9);
+    ILendingPool constant lendingPool =
+        ILendingPool(0x7d2768dE32b0b80b7a3454c06BdAc94A69DDc7A9);
 
-    address constant liquidationTarget = 0x59CE4a2AC5bC3f5F225439B2993b86B42f6d3e9F;
+    address constant liquidationTarget =
+        0x59CE4a2AC5bC3f5F225439B2993b86B42f6d3e9F;
     uint debt_USDT;
 
     // END TODO
@@ -158,7 +159,7 @@ contract Liquidate_2000 is IUniswapV2Callee {
     // given an input amount of an asset and pair reserves, returns the maximum output amount of the other asset
     // safe mul is not necessary since https://docs.soliditylang.org/en/v0.8.9/080-breaking-changes.html
     function getAmountOut(
-        uint256 amountIn,
+        uint256 amountIn, // coin for push for get another coin out
         uint256 reserveIn,
         uint256 reserveOut
     ) internal pure returns (uint256 amountOut) {
@@ -177,9 +178,9 @@ contract Liquidate_2000 is IUniswapV2Callee {
     // given an output amount of an asset and pair reserves, returns a required input amount of the other asset
     // safe mul is not necessary since https://docs.soliditylang.org/en/v0.8.9/080-breaking-changes.html
     function getAmountIn(
-        uint256 amountOut,
-        uint256 reserveIn,
-        uint256 reserveOut
+        uint256 amountOut, // first USDT flash loan
+        uint256 reserveIn, // WBTC in pool
+        uint256 reserveOut // USDR in pool
     ) internal pure returns (uint256 amountIn) {
         require(amountOut > 0, "UniswapV2Library: INSUFFICIENT_OUTPUT_AMOUNT");
         require(
@@ -194,10 +195,16 @@ contract Liquidate_2000 is IUniswapV2Callee {
     constructor() {
         // TODO: (optional) initialize your contract
 
-        uniswapV2Pair_WETH_USDT = IUniswapV2Pair(uniswapV2Factory.getPair(address(WETH), address(USDT))); // Pool1
-        uniswapV2Pair_WBTC_WETH = IUniswapV2Pair(uniswapV2Factory.getPair(address(WBTC), address(WETH))); // Pool2
-        uniswapV2Pair_WBTC_USDT = IUniswapV2Pair(uniswapV2Factory.getPair(address(WBTC), address(USDT))); // Pool3
-        debt_USDT = 2000*1000000;
+        uniswapV2Pair_WETH_USDT = IUniswapV2Pair(
+            uniswapV2Factory.getPair(address(WETH), address(USDT))
+        ); // Pool1
+        uniswapV2Pair_WBTC_WETH = IUniswapV2Pair(
+            uniswapV2Factory.getPair(address(WBTC), address(WETH))
+        ); // Pool2
+        uniswapV2Pair_WBTC_USDT = IUniswapV2Pair(
+            uniswapV2Factory.getPair(address(WBTC), address(USDT))
+        ); // Pool3
+        debt_USDT = 2000 * 1000000;
         // END TODO
     }
 
@@ -215,7 +222,7 @@ contract Liquidate_2000 is IUniswapV2Callee {
         //    *** Your code here ***
 
         // 1. get the target user account data & make sure it is liquidatable
-        
+
         uint256 totalCollateralETH;
         uint256 totalDebtETH;
         uint256 availableBorrowsETH;
@@ -231,7 +238,10 @@ contract Liquidate_2000 is IUniswapV2Callee {
             healthFactor
         ) = lendingPool.getUserAccountData(liquidationTarget);
 
-        require(healthFactor < (10 ** health_factor_decimals), "Cannot liquidate; health factor must be below 1" );
+        require(
+            healthFactor < (10 ** health_factor_decimals),
+            "Cannot liquidate; health factor must be below 1"
+        );
 
         // 2. call flash swap to liquidate the target user
         // based on https://etherscan.io/tx/0xac7df37a43fab1b130318bbb761861b8357650db2e2c6493b73d6da3d9581077
@@ -241,11 +251,19 @@ contract Liquidate_2000 is IUniswapV2Callee {
 
         uniswapV2Pair_WBTC_USDT.swap(0, debt_USDT, address(this), "$");
 
-        (uint256 reserve_WBTC_Pool2, uint256 reserve_WETH_Pool2, ) = uniswapV2Pair_WBTC_WETH.getReserves(); // Pool2
+        (
+            uint256 reserve_WBTC_Pool2,
+            uint256 reserve_WETH_Pool2,
+
+        ) = uniswapV2Pair_WBTC_WETH.getReserves(); // Pool2
 
         uint bal = WBTC.balanceOf(address(this));
         WBTC.transfer(address(uniswapV2Pair_WBTC_WETH), bal);
-        uint amountOut_WETH = getAmountOut(bal, reserve_WBTC_Pool2, reserve_WETH_Pool2);
+        uint amountOut_WETH = getAmountOut(
+            bal,
+            reserve_WBTC_Pool2,
+            reserve_WETH_Pool2
+        );
         uniswapV2Pair_WBTC_WETH.swap(0, amountOut_WETH, address(this), "");
 
         // 3. Convert the profit into ETH and send back to sender
@@ -267,25 +285,42 @@ contract Liquidate_2000 is IUniswapV2Callee {
         // TODO: implement your liquidation logic
 
         // 2.0. security checks and initializing variables
-        
-        assert(msg.sender == address(uniswapV2Pair_WBTC_USDT));
-        (uint256 reserve_WBTC_Pool1, uint256 reserve_USDT_Pool1, ) = uniswapV2Pair_WBTC_USDT.getReserves(); // Pool3
 
-        console.log("uniswapV2Pair(%s): WBTC <> USDT", address(uniswapV2Pair_WBTC_USDT));
+        assert(msg.sender == address(uniswapV2Pair_WBTC_USDT));
+        (
+            uint256 reserve_WBTC_Pool1,
+            uint256 reserve_USDT_Pool1,
+
+        ) = uniswapV2Pair_WBTC_USDT.getReserves(); // Pool3
+
+        console.log(
+            "uniswapV2Pair(%s): WBTC <> USDT",
+            address(uniswapV2Pair_WBTC_USDT)
+        );
         console.log("reserve WBTC: %s", reserve_WBTC_Pool1);
         console.log("reserve USDT: %s", reserve_USDT_Pool1);
 
         // 2.1 liquidate the target user
-        
+
         uint debtToCover = amount1;
         USDT.approve(address(lendingPool), debtToCover);
-        lendingPool.liquidationCall(address(WBTC), address(USDT), liquidationTarget, debtToCover, false);
+        lendingPool.liquidationCall(
+            address(WBTC),
+            address(USDT),
+            liquidationTarget,
+            debtToCover,
+            false
+        );
 
         // 2.2 swap WBTC for other things or repay directly
-        
+
         // 2.3 repay
 
-        uint256 repay_WBTC = getAmountIn(debtToCover, reserve_WBTC_Pool1, reserve_USDT_Pool1);
+        uint256 repay_WBTC = getAmountIn(
+            debtToCover,
+            reserve_WBTC_Pool1,
+            reserve_USDT_Pool1
+        );
         WBTC.transfer(address(uniswapV2Pair_WBTC_USDT), repay_WBTC);
         // END TODO
     }
