@@ -159,7 +159,7 @@ contract Liquidate_2000 is IUniswapV2Callee {
     // given an input amount of an asset and pair reserves, returns the maximum output amount of the other asset
     // safe mul is not necessary since https://docs.soliditylang.org/en/v0.8.9/080-breaking-changes.html
     function getAmountOut(
-        uint256 amountIn, // coin for push for get another coin out
+        uint256 amountIn,
         uint256 reserveIn,
         uint256 reserveOut
     ) internal pure returns (uint256 amountOut) {
@@ -178,9 +178,9 @@ contract Liquidate_2000 is IUniswapV2Callee {
     // given an output amount of an asset and pair reserves, returns a required input amount of the other asset
     // safe mul is not necessary since https://docs.soliditylang.org/en/v0.8.9/080-breaking-changes.html
     function getAmountIn(
-        uint256 amountOut, // first USDT flash loan
-        uint256 reserveIn, // WBTC in pool
-        uint256 reserveOut // USDR in pool
+        uint256 amountOut,
+        uint256 reserveIn,
+        uint256 reserveOut
     ) internal pure returns (uint256 amountIn) {
         require(amountOut > 0, "UniswapV2Library: INSUFFICIENT_OUTPUT_AMOUNT");
         require(
